@@ -1,0 +1,15 @@
+NVIDIA GeForce RTX 5090, 24545 MiB, 87 %
+16
+8
+bto320: P(A, continuous)       = [ 72.41141618 -90.31916534  78.51840593]
+bto320: P(B, read_restart)     = [ 72.41141924 -90.31916852  78.51840808]   diff 3.18e-06
+bto320: P(C, write_data + p0)  = [ 72.41141526 -90.31917314  78.51840633]   diff 7.80e-06
+hbn324: P(A, continuous)       = [ 0.45847583  0.37517674 -0.24726993]
+hbn324: P(B, read_restart)     = [ 0.45847914  0.37517789 -0.2472701 ]   diff 3.31e-06
+hbn324: P(C, write_data + p0)  = [ 0.45847466  0.37517815 -0.24727004]   diff 1.41e-06
+minimize + MD ok, P = [6.002459701948273, -11.012585410349566, 57.213613084773705]
+bto2560 fix=0: Loop time of 0.97051 on 1 procs for 200 steps with 2560 atoms  
+bto2560 fix=1: Loop time of 1.88848 on 1 procs for 200 steps with 2560 atoms  fix becfield/kk: 201 calls, 4.589 ms per call (incl. sync), 67780 edges
+hbn8960 fix=0: Loop time of 2.49538 on 1 procs for 200 steps with 8960 atoms  
+hbn8960 fix=1: Loop time of 5.61779 on 1 procs for 200 steps with 8960 atoms  fix becfield/kk: 201 calls, 15.505 ms per call (incl. sync), 311804 edges
+pair_same done

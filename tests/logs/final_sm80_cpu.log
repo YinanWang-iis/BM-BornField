@@ -1,0 +1,13 @@
+struct     prec         N | max|Z-Zpy32| max|Z-Z64|  (e) | field   max|dF-eZ64| max|dF| (meV/A) | |sum dF| (meV/A)
+bto40_f0   float32     40 |   2.56e-06   2.01e-06      | f1  3.14e-05   210.8   4.4e-13 | f2  4.16e-05   210.3   4.1e-13 |
+bto40_f0   float64     40 |   1.94e-06   7.12e-09      | f1  2.03e-07   210.8   2.4e-13 | f2  2.01e-07   210.3   5.5e-13 |
+           py32-64        |   1.94e-06   (float32 e3nn vs float64 reference)
+hbn36_f0   float32     36 |   8.94e-07   5.52e-07      | f1  9.60e-06     9.1   6.1e-14 | f2  8.93e-06    54.8   9.0e-14 |
+hbn36_f0   float64     36 |   4.87e-07   1.17e-09      | f1  1.14e-08     9.1   1.6e-14 | f2  1.78e-08    54.8   1.2e-13 |
+           py32-64        |   4.88e-07   (float32 e3nn vs float64 reference)
+bto2560    float32   2560 |   3.35e-06   1.91e-06      | f1  4.28e-05   221.0   7.4e-12 | f2  5.65e-05   222.7   1.2e-11 |
+bto2560    float64   2560 |   2.37e-06   9.66e-09      | f1  2.90e-07   221.0   1.0e-11 | f2  2.99e-07   222.7   3.6e-12 |
+           py32-64        |   2.37e-06   (float32 e3nn vs float64 reference)
+hbn8960    float32   8960 |   6.88e-06   1.48e-06      | f1  4.23e-05     9.5   8.0e-11 | f2  4.43e-05    54.3   3.4e-10 |
+hbn8960    float64   8960 |   6.29e-06   1.59e-09      | f1  1.43e-08     9.5   3.0e-11 | f2  2.61e-08    54.3   9.5e-11 |
+           py32-64        |   6.29e-06   (float32 e3nn vs float64 reference)

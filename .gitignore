@@ -1,0 +1,9 @@
+# exported models (derived from trained weights) and test data/outputs are not distributed
+*.json
+tests/struct/
+tests/out_*/
+tests/sp_pair_*/
+*.npz
+*.dump
+*.restart
+__pycache__/

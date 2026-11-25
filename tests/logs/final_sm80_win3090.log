@@ -1,0 +1,10 @@
+8100 MiB, 93 %
+arch=sm80 lmp=/homenfsxx3/ynwang/symmetrix_test/egcnn/lammps_sm80/bin/lmp
+10
+bto320: P(A, continuous)       = [ 72.41141948 -90.3191566   78.51840368]
+bto320: P(B, read_restart)     = [ 72.41141711 -90.31916583  78.51840597]   diff 9.23e-06
+bto320: P(C, write_data + p0)  = [ 72.41141801 -90.31916084  78.5184046 ]   diff 4.23e-06
+bto2560 fix=0: Loop time of 3.17209 on 1 procs for 200 steps with 2560 atoms  
+bto2560 fix=1: Loop time of 5.4326 on 1 procs for 200 steps with 2560 atoms  fix becfield/kk: 201 calls, 12.521 ms per call (incl. sync), 67780 edges
+hbn8960 fix=0: Loop time of 9.33409 on 1 procs for 200 steps with 8960 atoms  
+hbn8960 fix=1: Loop time of 19.9385 on 1 procs for 200 steps with 8960 atoms  fix becfield/kk: 201 calls, 54.547 ms per call (incl. sync), 311804 edges

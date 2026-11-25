@@ -1,0 +1,18 @@
+# speed: MACE (pair symmetrix float32) with / without fix becfield/kk.  -var data -var mace -var el -var model -var fix 0|1
+units metal
+atom_style atomic
+atom_modify map yes
+boundary p p p
+read_data ${data}
+pair_style symmetrix/mace/foundation/float32
+pair_coeff * * ${mace} ${el}
+variable ex equal 0
+variable ey equal 0
+variable ez equal 0.03
+if "${fix} == 1" then "fix ef all becfield ${model} ${el} efield v_ex v_ey v_ez timing yes"
+velocity all create 300 12345 mom yes rot no
+fix 1 all nve
+timestep 0.001
+thermo 50
+run 20
+run 200

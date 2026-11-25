@@ -1,0 +1,21 @@
+#!/bin/bash
+# LAMMPS with pair_symmetrix + fix becfield/kk: execs egcnn/lammps_<arch>/bin/lmp for this node's GPU
+# (compute capability >= 12 -> sm120, 8.x -> sm80; SYMX_ARCH=sm120|sm80 forces one).
+E=/homenfsxx3/ynwang/symmetrix_test/egcnn
+arch=${SYMX_ARCH:-}
+if [ -z "$arch" ]; then
+  smi=$(command -v nvidia-smi 2>/dev/null)
+  [ -z "$smi" ] && [ -x /usr/lib/wsl/lib/nvidia-smi ] && smi=/usr/lib/wsl/lib/nvidia-smi
+  cc=""
+  [ -n "$smi" ] && cc=$($smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -1 | tr -d ' ')
+  if [[ "$cc" =~ ^[0-9]+\.[0-9]+$ ]]; then
+    if [ "${cc%%.*}" -ge 12 ]; then arch=sm120; else arch=sm80; fi
+  else
+    echo "egcnn/bin/lmp: cannot detect a GPU (compute_cap='$cc'); set SYMX_ARCH=sm120 or sm80" >&2; exit 1
+  fi
+fi
+case "$arch" in sm120|sm80) ;; *) echo "egcnn/bin/lmp: unknown SYMX_ARCH=$arch" >&2; exit 1 ;; esac
+if [[ ":${LD_LIBRARY_PATH:-}:" != *":/homenfsxx3/ynwang/symmetrix_test/software/env/lib:"* ]]; then
+  source /homenfsxx3/ynwang/symmetrix_test/software/env.sh
+fi
+exec $E/lammps_$arch/bin/lmp "$@"
