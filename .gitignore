@@ -7,3 +7,5 @@ tests/sp_pair_*/
 *.dump
 *.restart
 __pycache__/
+python/build_*/
+*.so

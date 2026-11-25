@@ -1,7 +1,7 @@
 # BM-BornField：EGCNN（Born 有效电荷网络）GPU 版 LAMMPS 接口 `fix becfield/kk`
 
 （英文说明见 README.md。本仓库是课题组集群上 `/homenfsxx3/ynwang/symmetrix_test/egcnn/` 的源码，第 1 节是集群上的安装位置；
-仓库里对应的目录：`lammps/`（fix 源码）、`tools/`（导出与内核生成）、`cluster/`（集群用的构建与环境脚本）、`tests/`。
+仓库里对应的目录：`lammps/`（fix 源码与共用 CUDA 核心）、`python/`（Python 模块 bornfield）、`tools/`（导出与内核生成）、`cluster/`（集群用的构建与环境脚本）、`tests/`。
 导出的模型 json 和测试结构不在仓库里。）
 
 给 EFMLP 方法 2 用：零场 MACE（`pair_style symmetrix/mace/foundation/float32`）＋ EGCNN 预测的 Born 有效电荷 Z\*，
@@ -12,6 +12,9 @@
 
 上面两组数字都是在共享的 RTX 5090 上测的（同卡另有作业，GPU 利用率约 88%）。
 Z\* 与 Python 参考逐原子一致：float32 下最大差 ≤ 7e-6 e。
+
+另外提供 **Python 模块 `bornfield`**（ASE calculator，见第 7 节）：同一份 CUDA 网络，加上自带的 GPU 邻居表，
+可以在 ASE 里和 `symmetrix.experimental.MACEFoundation` 叠加使用。2560 原子每次调用 1.9 ms，8960 原子 8.4 ms。
 
 ---
 
@@ -25,8 +28,9 @@ Z\* 与 Python 参考逐原子一致：float32 下最大差 ≤ 7e-6 e。
 | Blackwell 版（5090、RTX PRO 6000/5000） | `egcnn/lammps_sm120/` |
 | 非 Blackwell 版（3090、4090、6000 Ada、A100） | `egcnn/lammps_sm80/` |
 | 已转换好的模型 | `egcnn/models/egcnn_bto.json`、`egcnn/models/egcnn_hbn.json` |
-| 源码 | `egcnn/lammps/`（fix、生成的内核头文件、install.sh） |
-| 构建脚本 | `egcnn/build_lammps.sh`（`ARCH=sm120\|sm80`） |
+| 源码 | `egcnn/lammps/`（fix、共用 CUDA 核心 `becfield_core.cuh`、生成的内核头文件、install.sh） |
+| Python 模块 | `egcnn/python/`（源码），`egcnn/python_sm120/`、`egcnn/python_sm80/`（编好的 `bornfield` 包） |
+| 构建脚本 | `egcnn/build_lammps.sh`、`egcnn/build_python.sh`（`ARCH=sm120\|sm80`） |
 | 工具 | `egcnn/tools/`（导出、内核生成、纯 torch 参考实现） |
 | 测试 | `egcnn/tests/` |
 
@@ -34,7 +38,7 @@ Z\* 与 Python 参考逐原子一致：float32 下最大差 ≤ 7e-6 e。
 
 - 先 `source field/env.sh`：按 GPU 选 Python venv（sm120 / sm80），这一步和原来一样。
 - 再把 LAMMPS 换成 `egcnn/lammps_<arch>`：设置 `SYMMETRIX_LMP`、`PATH`、`LD_LIBRARY_PATH`。
-- 导出 LAMMPS 的 Python 模块：`PYTHONPATH=egcnn/lammps-src/python`。
+- 导出 LAMMPS 的 Python 模块和 `bornfield` 模块：`PYTHONPATH=egcnn/python_<arch>:egcnn/lammps-src/python`。
 
 用 Python 驱动时，可以直接用它代替 `MD/common/symx_env.sh` 里的 `field/env.sh` 那一层。没有 GPU 的节点上，先 `export SYMX_ARCH=sm120` 或 `sm80`。
 
@@ -246,8 +250,91 @@ minimize 之后的下一个 `run`，开头的 setup 调用会把"弛豫前位置
 - **非 Blackwell 卡**：sm80 版只在 RTX 3090 上测过。4090、6000 Ada、A100 这次没有空闲的卡。sm_80 的二进制在这些卡上可以直接运行，之前的 field sm80 环境在 4090 和 A100 上测过。
 - **速度数字**：都是在共享显卡上测的，独占时应更快，但没有测过。
 - **CPU 的 `fix becfield`（不加 kk）**：没有实现，用了会报错并提示加 `-sf kk`。
+- **Python 模块**：只有 GPU 版。邻居表的分格在 CPU 上做（每次调用把坐标拷到 GPU），对上万原子仍然很快，但比 LAMMPS 版多一点开销。
 
-## 7. 测试文件
+## 7. Python 模块 `bornfield`（ASE calculator）
+
+`source egcnn/env.sh` 之后可以直接 `import bornfield`（按显卡自动选 sm120 / sm80 版）。
+网络和 LAMMPS fix 用的是同一份 CUDA 代码（`lammps/becfield_core.cuh`），邻居表是模块自带的 GPU cell list。
+
+```python
+import numpy as np
+from ase.calculators.mixing import SumCalculator
+from ase.md.verlet import VelocityVerlet
+from ase import units
+from symmetrix.experimental import MACEFoundation
+from bornfield import BornField, PolarizationTracker
+
+E = "/homenfsxx3/ynwang/symmetrix_test/egcnn/models/egcnn_bto.json"
+M = "/homenfsxx3/ynwang/EFMLP_method_compare/MD/models_lammps/NON_FIELD__mace_bto.json"
+
+bf = BornField(E, electric_field=(0, 0, 0.03))          # V/Å；也可以传 f(atoms) -> (3,)，或设 atoms.info["electric_field"]
+Z = bf.becs(atoms)                                       # (N, 3, 3)，Z[i, a, b]，已做 ASR
+atoms.calc = SumCalculator([MACEFoundation(M, dtype="float32"), bf])   # 零场 MACE + 场致力
+
+tr = PolarizationTracker()                               # 可以给初值 PolarizationTracker(P0=(Px, Py, Pz))
+atoms.get_forces(); tr.update(atoms)                     # 先记录起点
+dyn = VelocityVerlet(atoms, 1.0 * units.fs)
+dyn.attach(lambda: tr.update(atoms), interval=1)         # 每步累加 ΔP（e·Å），公式与 LAMMPS fix 相同
+dyn.run(1000)
+print(tr.P)
+```
+
+**BornField 的输出**
+
+- `forces`：场致力 F_i[b] = Σ_a ε_a Z_i[a,b]。
+- `becs`：Z\*，形状 (N, 3, 3)。
+- `energy`、`stress`：返回 0。场致力不是保守力，和 LAMMPS 版一样没有能量和维里。
+
+**参数**
+
+| 参数 | 默认 | 含义 |
+|---|---|---|
+| `electric_field` | (0, 0, 0) | 电场（V/Å）。可以是 3 个数，也可以是函数 f(atoms)；`atoms.info["electric_field"]` 优先 |
+| `precision` | "float32" | "float32" 或 "float64" |
+| `radial` | "spline" | "spline" 或 "exact"（与 LAMMPS fix 的同名关键字相同） |
+| `grid` | 1024 | 样条区间数 |
+
+**低层接口**：`bornfield.BornFieldGPU(model, precision, radial, grid).compute(positions, numbers, cell, pbc)`
+返回 (N, 9) 的 numpy 数组。
+
+**支持的体系**：三维周期、部分周期（例如 pbc = [True, True, False] 的板）、非周期（没有晶胞的团簇）都可以。
+坐标不需要先折回晶胞。
+
+**PolarizationTracker**
+
+- 每次力计算之后调用一次 `update(atoms)`，Z\* 从 `atoms.calc` 里的 BornField 结果读取，支持 SumCalculator。
+- 也可以自己传 `update(atoms, Z)`。
+- 公式与 `BECFieldForce._callback` 和 LAMMPS fix 完全相同：梯形、最小镜像、两步平均晶胞。
+
+**Python 模块的验证**（`tests/py_bornfield.py` + `compare_py.py`，sm120 版在 5090 上）
+
+| 体系 | N | float32：max\|Z−Z64\| | float32：与 LAMMPS fix 之差 | float64：max\|Z−Z64\| | float64：与 LAMMPS fix 之差 |
+|---|---|---|---|---|---|
+| BaTiO3 测试帧 | 40 | 2.1e-6 | 8.9e-7 | 6.8e-9 | 5e-10 |
+| hBN 测试帧 | 36 | 6.9e-7 | 7.6e-7 | 8.9e-10 | 5e-10 |
+| BaTiO3 超胞 | 2560 | 3.4e-6 | 1.9e-6 | 9.7e-9 | 5e-10 |
+| hBN 畴壁 | 8960 | 1.1e-6 | 9.6e-7 | 1.1e-9 | 5e-10 |
+| BaTiO3 原始三斜帧（未旋转、坐标平移到晶胞外） | 40 | 1.8e-6 | – | 8.2e-9 | – |
+| BaTiO3 非周期团簇（无晶胞） | 65 | 1.1e-6 | – | 8.8e-9 | – |
+| hBN 板（pbc = T T F） | 36 | 5.4e-7 | – | 1.1e-9 | – |
+
+单位均为 e。补充说明：
+
+- 边数和 ASE `neighbor_list` 完全一致：2560 原子 68,290 条，8960 原子 324,464 条。
+- **旋转等变性**：Z(R r) 与 R Z Rᵀ 之差，float32 为 1.3e-6 e，float64 为 3e-8 e。
+- **ASE MD**：MACE（symmetrix）+ BornField + PolarizationTracker，320 原子跑 50 步正常，|ΣF_field| = 5e-16 eV/Å。
+- **速度**：每次调用（含 CPU 分格和拷贝）2560 原子 1.9 ms，8960 原子 8.4 ms（5090，与其他作业共享）。
+- **sm80 版（RTX 3090，与一个 BaTiO3 MD 共享，利用率 100%）**：同样 7 个体系 float32 max\|Z−Z64\| ≤ 1.9e-6 e，
+  float64 ≤ 1e-8 e，旋转等变 1.6e-6 / 3e-8 e，ASE MD 正常；速度 15 ms / 61 ms（卡被占满，仅供参考）。
+
+**拆出共用核心后 LAMMPS fix 的回归检查**：
+
+- float64 的 Z\* 与拆分前逐位相同（sm120 和 sm80 都是）。
+- float32 的差在 1e-6 e 量级，属于 float32 运行间的噪声。
+- 200 步 MD 的 ΔP 与拆分前的差为 1.4e-5 e·Å（float32 MACE 轨迹的抖动）。
+
+## 8. 测试文件
 
 `tests/` 下的文件：
 
@@ -257,9 +344,10 @@ minimize 之后的下一个 `run`，开头的 setup 调用会把"弛豫前位置
 - **minimize**：`min_check.py`。
 - **速度**：`bench.sh` + `in.bench`。
 - **原有 pair_style 是否改变**：`pair_same.sh` + `compare_pair.py`。
-- **日志**：`final_sm120_gpu.log`、`final_sm120_cpu.log`、`final_sm80_win3090.log`、`final_sm80_cpu.log`、`compare_pair_sm120.log`。
+- **Python 模块**：`py_bornfield.py`（GPU）+ `compare_py.py`（EGCNN 环境，CPU）。
+- **日志**：`final_sm120_gpu.log`、`final_sm120_cpu.log`、`final_sm80_win3090.log`、`final_sm80_cpu.log`、`compare_pair_sm120.log`、`py_sm120_gpu.log`、`py_sm120_cpu.log`、`py_sm80_win3090.log`、`py_sm80_cpu.log`。
 
-## 8. 引用
+## 9. 引用
 
 使用本代码请引用提出该 Born 有效电荷网络（EGCNN，BM1 架构）的论文：
 

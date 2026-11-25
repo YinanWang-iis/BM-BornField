@@ -1,0 +1,16 @@
+27931 MiB, 88 %
+bto40_f0 40 edges 1054
+hbn36_f0 36 edges 1224
+bto2560 2560 edges 68290
+hbn8960 8960 edges 324464
+bto40_raw 40 edges 1056
+bto_cluster 65 edges 986
+hbn_slab_pbc110 36 edges 1210
+  at.calc = SumCalculator([MACEFoundation(R + "MD/models_lammps/NON_FIELD__mace_bto.json", dtype="float32"), bf])
+/mnt/homenfsxx3/ynwang/symmetrix_test/egcnn/tests/py_bornfield.py:54: DeprecationWarning: Use thermalize_momenta
+  MaxwellBoltzmannDistribution(at, temperature_K=300, rng=np.random.default_rng(1))
+rotation float32: max |Z(Rr) - R Z R^T| = 1.25e-06 e
+rotation float64: max |Z(Rr) - R Z R^T| = 3.07e-08 e
+timing bto2560: 1.91 ms per call (incl. host neighbour binning, copies)
+timing hbn8960: 8.44 ms per call (incl. host neighbour binning, copies)
+ASE MD 320 atoms 50 steps ok: P = [ -0.45226 -14.48935  70.71295] e*A, |sum F_field| = 4.9e-16 eV/A

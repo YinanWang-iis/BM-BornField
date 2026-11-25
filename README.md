@@ -23,6 +23,10 @@ of an MD step is about **30× faster**:
 Both timings are per step, float32, measured on an RTX 5090 that was shared with another job. The predicted Z\*
 agree with the Python model to ≤ 7×10⁻⁶ e per component.
 
+The same CUDA network is also available as a **Python module with an ASE calculator** (`bornfield`, see
+[Python / ASE](#python--ase)). It has its own GPU neighbour list, and is meant for use in ASE together with any
+zero-field calculator.
+
 ## Physics
 
 The fix implements the following, with ε the uniform external field in V/Å:
@@ -143,6 +147,72 @@ leave it out, define the fix after the minimization.
 **Python driver.** When LAMMPS is driven from Python, call `lmp.finalize()` after `lmp.close()`. Otherwise Kokkos aborts
 at interpreter exit with `cudaErrorCudartUnloading`. This also happens without this fix.
 
+## Python / ASE
+
+The module `bornfield` runs the same CUDA code as the LAMMPS fix (`lammps/becfield_core.cuh`) and builds its own GPU
+cell-list neighbour list. It supports fully periodic, partially periodic (e.g. slabs) and non-periodic systems, and
+positions do not need to be wrapped.
+
+**Build**
+
+```bash
+cmake -S python -B build -D CMAKE_CUDA_ARCHITECTURES=<80|120> \
+      -D SYMMETRIX_SOURCE=path/to/symmetrix-MACE-Field/libsymmetrix/source \
+      -D pybind11_DIR=$(python -c "import pybind11; print(pybind11.get_cmake_dir())")
+cmake --build build
+```
+
+Then copy `build/_bornfield*.so` next to `python/bornfield/__init__.py`. `cluster/build_python.sh` does this on our
+cluster.
+
+**Example**
+
+```python
+from ase.calculators.mixing import SumCalculator
+from ase.md.verlet import VelocityVerlet
+from ase import units
+from symmetrix.experimental import MACEFoundation          # zero-field MLP (any ASE calculator works)
+from bornfield import BornField, PolarizationTracker
+
+bf = BornField("egcnn_bto.json", electric_field=(0, 0, 0.03))   # V/Å; or f(atoms) -> (3,), or atoms.info["electric_field"]
+Z = bf.becs(atoms)                                               # (N, 3, 3), Z[i, a, b], acoustic sum rule applied
+atoms.calc = SumCalculator([MACEFoundation("mace_bto.json", dtype="float32"), bf])
+
+tr = PolarizationTracker()                                       # accumulated ΔP in e·Å, same formula as the fix
+atoms.get_forces(); tr.update(atoms)
+dyn = VelocityVerlet(atoms, 1.0 * units.fs)
+dyn.attach(lambda: tr.update(atoms), interval=1)
+dyn.run(1000)
+```
+
+**What `BornField` returns**
+
+- `forces`: ε·Z\*.
+- `becs`: Z\*.
+- `energy` and `stress`: 0, because the force is not conservative.
+
+Options: `precision` ("float32" / "float64"), `radial` ("spline" / "exact") and `grid`. The low-level interface is
+`BornFieldGPU(model).compute(positions, numbers, cell, pbc)`, which returns an (N, 9) array.
+
+**Validation** (`tests/py_bornfield.py`, `tests/compare_py.py`). Seven test systems:
+
+- BaTiO3, 40 and 2,560 atoms;
+- hBN, 36 and 8,960 atoms;
+- an unrotated triclinic frame with unwrapped positions;
+- a non-periodic cluster;
+- a slab with pbc = (T, T, F).
+
+| Check | float32 | float64 |
+|---|---|---|
+| max \|Z\* − reference\| | ≤ 3.4×10⁻⁶ e | ≤ 1×10⁻⁸ e |
+| max \|Z\* − LAMMPS fix\| | ≤ 1.9×10⁻⁶ e | 5×10⁻¹⁰ e (print precision) |
+| Rotation equivariance, \|Z(Rr) − R Z Rᵀ\| | 1.3×10⁻⁶ e | 3×10⁻⁸ e |
+
+- The neighbour lists are identical to ASE's `neighbor_list`.
+- **Speed** on a shared RTX 5090, per call including host-side binning: 1.9 ms for 2,560 atoms and 8.4 ms for
+  8,960 atoms.
+- **ASE MD**: MACE + `BornField` + `PolarizationTracker` runs normally.
+
 ## Validation
 
 All scripts are in `tests/` and the logs in `tests/logs/`. There are two references:
@@ -187,7 +257,8 @@ identical to the build without this fix.
 - **Thermodynamics**: there is no energy or virial contribution, so the pressure contains no field term.
   - ΔP under a varying cell (NPT) uses the same mean-cell formula as the original code, but it has only been validated
     in NVE.
-- **No CPU version**: plain `fix becfield` stops with an error asking for `-sf kk`.
+- **No CPU version**: plain `fix becfield` stops with an error asking for `-sf kk`. The Python module is GPU-only
+  as well.
 
 ## How to cite
 
